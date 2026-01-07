@@ -1,0 +1,4 @@
+watch_path: C:\Users\JEO GODSON SAMUEL J\OneDrive\Desktop\EPA
+entropy_sample_size: 4096
+zscore_threshold: 3.0
+rolling_window: 10

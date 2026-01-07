@@ -1,0 +1,6 @@
+watchdog
+numpy
+scipy
+psutil
+streamlit
+pandas
