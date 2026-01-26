@@ -5,3 +5,7 @@ psutil
 streamlit
 pandas
 cryptography
+pyyaml
+streamlit-autorefresh
+pyinotify
+colorama

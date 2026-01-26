@@ -7,6 +7,11 @@ class RollingEntropy:
 
     def add(self, value):
         self.values.append(value)
+    
+    @property
+    def count(self):
+        """Return the number of values in the rolling window"""
+        return len(self.values)
 
     def stats(self):
         if len(self.values) < 2:

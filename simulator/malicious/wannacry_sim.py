@@ -30,7 +30,7 @@ class WannaCrySimulator:
         self,
         target_dir: str,
         speed: int = 500,
-        encryption_algorithm: str = "fernet"
+        encryption_algorithm: str = "aes256"
     ):
         """
         Initialize WannaCry simulator

@@ -2,6 +2,12 @@ import time
 import yaml
 from watchdog.observers import Observer
 from monitor.watcher import Watcher
+from shared.db import init_db
+
+# Initialize database
+print("🛡️ EPA - Entropy-based Process Anomaly Detection")
+print("=" * 50)
+init_db()
 
 with open("config.yaml") as f:
     config = yaml.safe_load(f)
@@ -9,15 +15,22 @@ with open("config.yaml") as f:
 path = config["watch_path"]
 
 event_handler = Watcher(
-    sample_size=config["entropy_sample_size"],
-    threshold=config["zscore_threshold"]
+    sample_size=config.get("entropy_sample_size", 4096),
+    threshold=config.get("zscore_threshold", 3.0),
+    cusum_drift=config.get("cusum_drift", 0.1),
+    cusum_threshold=config.get("cusum_threshold", 1.5)
 )
 
 observer = Observer()
 observer.schedule(event_handler, path, recursive=True)
 observer.start()
 
-print("🛡️ EPA-Lite running... Monitoring:", path)
+print(f"🔍 Monitoring: {path}")
+print(f"📊 Detection Methods:")
+print(f"   - High Entropy (>5.5): Immediate alert")
+print(f"   - CUSUM (drift={config.get('cusum_drift', 0.1)}, threshold={config.get('cusum_threshold', 1.5)}): Slow attack detection")
+print(f"   - Z-score (threshold={config.get('zscore_threshold', 3.0)}): Statistical anomaly detection")
+print("=" * 50)
 
 try:
     while True:

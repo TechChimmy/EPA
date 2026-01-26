@@ -1,4 +1,6 @@
-watch_path: C:\Users\JEO GODSON SAMUEL J\OneDrive\Desktop\EPA
+watch_path: test-folder
 entropy_sample_size: 4096
 zscore_threshold: 3.0
 rolling_window: 10
+cusum_drift: 0.1
+cusum_threshold: 1.5
