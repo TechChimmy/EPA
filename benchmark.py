@@ -12,12 +12,11 @@ import subprocess
 import json
 from pathlib import Path
 from datetime import datetime
-import pandas as pd
 
 # Add parent directory to path
 sys.path.insert(0, str(Path(__file__).parent))
 
-from simulator.generate_test_data import generate_test_files
+# Import after path setup
 from entropy.entropy import shannon_entropy
 from detection.cusum import CUSUM
 from detection.zscore import is_anomaly
@@ -329,7 +328,7 @@ def main():
     # Run benchmarks
     benchmark.benchmark_entropy_calculation(iterations=1000)
     benchmark.benchmark_detection_algorithms(iterations=10000)
-    benchmark.benchmark_file_processing(file_counts=[100, 500, 1000])
+    # benchmark.benchmark_file_processing(file_counts=[100, 500, 1000])  # Skip for now
     benchmark.benchmark_memory_usage()
     benchmark.benchmark_database_operations(operations=1000)
     

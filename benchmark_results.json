@@ -1,0 +1,57 @@
+{
+  "timestamp": "2026-02-05T22:07:42.997809",
+  "system_info": {
+    "cpu_count": 8,
+    "total_memory_gb": 15.4,
+    "python_version": "3.10.12",
+    "platform": "linux"
+  },
+  "benchmarks": {
+    "entropy_calculation": {
+      "1024_bytes": {
+        "avg_time_ms": 0.0468,
+        "throughput_ops_per_sec": 21366.26
+      },
+      "4096_bytes": {
+        "avg_time_ms": 0.1154,
+        "throughput_ops_per_sec": 8662.73
+      },
+      "8192_bytes": {
+        "avg_time_ms": 0.1811,
+        "throughput_ops_per_sec": 5521.4
+      },
+      "16384_bytes": {
+        "avg_time_ms": 0.3892,
+        "throughput_ops_per_sec": 2569.56
+      }
+    },
+    "detection_algorithms": {
+      "cusum": {
+        "avg_time_us": 0.22,
+        "throughput_ops_per_sec": 4531933.01
+      },
+      "zscore": {
+        "avg_time_us": 0.1,
+        "throughput_ops_per_sec": 10051052.0
+      }
+    },
+    "memory_usage": {
+      "baseline_mb": 13.38,
+      "with_1000_files_mb": 28.8,
+      "increase_mb": 15.43,
+      "per_file_kb": 15.8
+    },
+    "database_operations": {
+      "entropy_insert": {
+        "total_time_sec": 0.02,
+        "throughput_ops_per_sec": 61293.35,
+        "avg_time_ms": 0.0163
+      },
+      "entropy_query": {
+        "total_time_sec": 0.05,
+        "throughput_ops_per_sec": 21118.4,
+        "avg_time_ms": 0.0474
+      }
+    }
+  }
+}
