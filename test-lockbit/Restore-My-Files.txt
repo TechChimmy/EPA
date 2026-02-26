@@ -1,0 +1,48 @@
+
+>>> LockBit Ransomware <<<
+
+Your files are encrypted and your data was downloaded.
+
+═══════════════════════════════════════════════════════════
+
+WHAT HAPPENED?
+--------------
+We encrypted all your important business files using strong
+encryption algorithms. We also downloaded sensitive data from
+your network.
+
+═══════════════════════════════════════════════════════════
+
+WHAT DO WE WANT?
+----------------
+We want money. After payment we will:
+1. Provide decryption software
+2. Delete your stolen data
+3. Provide security report
+
+═══════════════════════════════════════════════════════════
+
+HOW TO CONTACT US?
+------------------
+Visit our TOR website: [REDACTED - THIS IS A SIMULATION]
+Your unique ID: [REDACTED]
+
+═══════════════════════════════════════════════════════════
+
+⚠️  IMPORTANT WARNINGS ⚠️
+-------------------------
+- Do not rename encrypted files
+- Do not try to decrypt using third-party software
+- Do not contact recovery companies
+- Do not ignore us
+
+If you ignore this message:
+- Your data will be published on our leak site
+- Decryption will become impossible
+- Ransom amount will double
+
+═══════════════════════════════════════════════════════════
+
+THIS IS A SIMULATION FOR SECURITY TESTING PURPOSES ONLY
+
+═══════════════════════════════════════════════════════════

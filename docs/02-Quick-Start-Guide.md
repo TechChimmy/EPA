@@ -62,33 +62,138 @@ Generates:
 
 ## 🎮 Running Simulators
 
-### Malicious Attacks (Should Detect)
+> ⚠️ **Always run each attack in its own isolated folder.** Generate fresh test data before each run so attacks do not interfere with each other.
+
+### Step 0: Generate Fresh Test Data
+
+Each attack needs a clean directory with test files to encrypt. Run this before any simulation:
+
 ```bash
 source venv/bin/activate
 
-# WannaCry-style (fast)
-python simulator/malicious/wannacry_sim.py test-folder/
+# Generate test data for a specific attack folder
+python3 simulator/generate_test_data.py <folder-name>
 
-# Ryuk-style (slow)
-python simulator/malicious/ryuk_sim.py test-folder/
-
-# LockBit-style (targeted)
-python simulator/malicious/lockbit_sim.py test-folder/
+# To regenerate (wipe and recreate):
+python3 simulator/generate_test_data.py <folder-name> --clean
 ```
 
-### Benign Activities (Should NOT Detect)
+---
+
+### 🚀 Attack 1 — WannaCry-Style (Fast & Furious)
+
+**Behaviour:** Encrypts ALL common file types in-place at 500 files/sec. Drops `README_DECRYPT.txt`.
+
 ```bash
 source venv/bin/activate
 
-# Backup
-python simulator/benign/backup_sim.py test-folder/
+# Step 1: Create isolated test data
+python3 simulator/generate_test_data.py test-wannacry
 
-# Database
-python simulator/benign/database_sim.py test-folder/
-
-# Video
-python simulator/benign/video_sim.py test-folder/
+# Step 2: Run the attack
+echo "yes" | python3 simulator/malicious/wannacry_sim.py test-wannacry --speed 500 --algorithm aes256
 ```
+
+**What you'll see:**
+- Every `.txt`, `.doc`, `.docx`, `.pdf`, `.jpg`, `.png`, `.xlsx`, `.zip`, `.sql`, `.bak` encrypted in-place
+- `[WANNACRY] ✓ Encrypted: <file>` for each file
+- `README_DECRYPT.txt` ransom note created in the folder
+- Summary: files encrypted, KB processed, time elapsed
+
+**Options:**
+| Flag | Default | Description |
+|---|---|---|
+| `--speed N` | `500` | Files per second |
+| `--algorithm` | `aes256` | `fernet`, `aes256`, or `chacha20` |
+
+---
+
+### 🎯 Attack 2 — LockBit-Style (Targeted & Selective)
+
+**Behaviour:** Targets only business-critical files at 100 files/sec. Renames to `.lockbit`, deletes originals. Drops `Restore-My-Files.txt`.
+
+```bash
+source venv/bin/activate
+
+# Step 1: Create isolated test data
+python3 simulator/generate_test_data.py test-lockbit
+
+# Step 2: Run the attack
+echo "yes" | python3 simulator/malicious/lockbit_sim.py test-lockbit --speed 100 --algorithm fernet
+```
+
+**What you'll see:**
+- Only `.xlsx`, `.xls`, `.sql`, `.bak`, `.docx`, `.doc`, `.pptx`, `.ppt` targeted
+- `[LOCKBIT] ✓ report.doc → report.doc.lockbit` (originals deleted)
+- `Restore-My-Files.txt` ransom note created
+- Breakdown by extension before encryption starts
+
+**Options:**
+| Flag | Default | Description |
+|---|---|---|
+| `--speed N` | `100` | Files per second |
+| `--algorithm` | `fernet` | `fernet`, `aes256`, or `chacha20` |
+
+---
+
+### 🐢 Attack 3 — Ryuk-Style (Slow & Stealthy)
+
+**Behaviour:** Prioritises high-value files (`.sql`, `.bak`, `.xlsx`, `.docx`) first, then secondary targets. Renames to `.ryk`, deletes originals. Drops `RyukReadMe.txt`.
+
+```bash
+source venv/bin/activate
+
+# Step 1: Create isolated test data
+python3 simulator/generate_test_data.py test-ryuk
+
+# Step 2a: Real stealth simulation (default — 5 files/minute, very slow)
+echo "yes" | python3 simulator/malicious/ryuk_sim.py test-ryuk --speed 5 --algorithm aes256
+
+# Step 2b: Quick testing (sped up)
+echo "yes" | python3 simulator/malicious/ryuk_sim.py test-ryuk --speed 300 --algorithm aes256
+```
+
+**What you'll see:**
+- `⭐` marking priority targets (`.sql`, `.bak`, `.xlsx`) in the breakdown
+- Progress counter: `[RYUK] Progress: 1/45`
+- `[RYUK] ✓ Encrypted: backup.sql → backup.sql.ryk` (originals deleted)
+- `RyukReadMe.txt` ransom note created
+- Estimated duration shown before starting
+
+**Options:**
+| Flag | Default | Description |
+|---|---|---|
+| `--speed N` | `5` | Files per **minute** (not per second!) |
+| `--algorithm` | `aes256` | `fernet`, `aes256`, or `chacha20` |
+
+---
+
+### ✅ Benign Activities (Should NOT Trigger Alerts)
+
+These simulate legitimate software that produces high-entropy output, used to validate zero false positives.
+
+```bash
+source venv/bin/activate
+
+# Backup compression (50 files/sec, creates .zip archive)
+python3 simulator/benign/backup_sim.py test-folder/
+
+# Database writes (SQLite with encrypted blobs)
+python3 simulator/benign/database_sim.py test-folder/
+
+# Video encoding (creates fake .mp4 files, 1 video/minute)
+python3 simulator/benign/video_sim.py test-folder/
+```
+
+---
+
+### 🔑 Quick Reference
+
+| Attack | Script | Speed | Extension | Ransom Note |
+|---|---|---|---|---|
+| WannaCry | `simulator/malicious/wannacry_sim.py` | 500 files/sec | in-place | `README_DECRYPT.txt` |
+| LockBit | `simulator/malicious/lockbit_sim.py` | 100 files/sec | `.lockbit` | `Restore-My-Files.txt` |
+| Ryuk | `simulator/malicious/ryuk_sim.py` | 5 files/min | `.ryk` | `RyukReadMe.txt` |
 
 ---
 

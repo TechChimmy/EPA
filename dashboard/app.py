@@ -40,6 +40,51 @@ except Exception as e:
     st.error(f"❌ Failed to connect to database: {e}")
     st.stop()
 
+
+# -------------------------------------------------
+# SIMULATOR CONTROL (SIDEBAR)
+# -------------------------------------------------
+with st.sidebar:
+    st.header("🎮 Simulator Control")
+    st.caption("Trigger simulations in `test-folder`")
+    
+    # Target directory (hardcoded for now, matches config)
+    TARGET_DIR = "test-folder"
+    
+    import subprocess
+    
+    def run_simulation(script_path, name):
+        """Run a simulation script in a subprocess"""
+        try:
+            full_path = os.path.join(ROOT_DIR, script_path)
+            # Use same python executable
+            subprocess.Popen([sys.executable, full_path, TARGET_DIR])
+            st.toast(f"🚀 Started {name}!")
+        except Exception as e:
+            st.error(f"Failed to start {name}: {e}")
+
+    st.subheader("⚠️ Malicious Attacks")
+    if st.button("🦠 WannaCry (Fast Encrypt)", type="primary"):
+        run_simulation("simulator/malicious/wannacry_sim.py", "WannaCry")
+        
+    if st.button("👹 Ryuk (Slow Encrypt)", type="primary"):
+        run_simulation("simulator/malicious/ryuk_sim.py", "Ryuk")
+        
+    if st.button("🔒 LockBit (Targeted)", type="primary"):
+        run_simulation("simulator/malicious/lockbit_sim.py", "LockBit")
+        
+    st.divider()
+    
+    st.subheader("✅ Benign Activity")
+    if st.button("📦 Backup (Compression)"):
+        run_simulation("simulator/benign/backup_sim.py", "Backup")
+        
+    if st.button("🗄️ Database (Activity)"):
+        run_simulation("simulator/benign/database_sim.py", "Database")
+    
+    if st.button("🎥 Video (Processing)"):
+        run_simulation("simulator/benign/video_sim.py", "Video")
+
 # -------------------------------------------------
 # SYSTEM STATUS SECTION
 # -------------------------------------------------
