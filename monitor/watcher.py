@@ -9,6 +9,7 @@ from alert.alert import raise_alert
 from shared.state import entropy_history
 from shared.db import get_conn
 import os
+import time
 
 
 class Watcher(FileSystemEventHandler):
@@ -19,6 +20,7 @@ class Watcher(FileSystemEventHandler):
         self.cusum_threshold = cusum_threshold
         self.store = {}  # Rolling entropy windows per file
         self.cusum_store = {}  # CUSUM detectors per file
+        self.last_processed = {}  # timestamp of last processing per file
 
     def on_modified(self, event):
         self._process_event(event)
@@ -27,10 +29,18 @@ class Watcher(FileSystemEventHandler):
         self._process_event(event)
 
     def _process_event(self, event):
-        if event.is_directory:
+        if event.is_directory or event.src_path.endswith(('.db', '.db-journal', '.log')):
             return
 
-        print(f"[DEBUG] Event ({event.event_type}): {event.src_path}")
+        # Debounce: Skip if we processed this exact file in the last 1.0 seconds
+        # This prevents duplicate alerts from both on_created and on_modified
+        current_time = time.time()
+        if event.src_path in self.last_processed:
+            if current_time - self.last_processed[event.src_path] < 1.0:
+                return
+
+        self.last_processed[event.src_path] = current_time
+        print(f"[DEBUG] Processing ({event.event_type}): {event.src_path}")
 
         # Get process information for the modifying process
         # Note: watchdog doesn't provide PID, so we get current process info

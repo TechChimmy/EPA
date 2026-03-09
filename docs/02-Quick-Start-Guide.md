@@ -8,17 +8,28 @@
 bash setup.sh
 ```
 
-### 2. Running EPA System
+### 2. Running EPA System (Recommended)
+
+The easiest way to start the system is using the provided **Makefile**:
+
+```bash
+# Start both Monitor and Dashboard simultaneously
+make run
+```
+
+---
+
+### 3. Manual Startup (Alternative)
 
 **Terminal 1: Start EPA Monitoring**
 ```bash
-source venv/bin/activate
+source venv/bin/activate.fish
 python main.py
 ```
 
 **Terminal 2: Start Dashboard**
 ```bash
-source venv/bin/activate
+source venv/bin/activate.fish
 cd dashboard
 streamlit run app.py
 ```

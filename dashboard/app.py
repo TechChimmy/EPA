@@ -4,6 +4,9 @@ import sqlite3
 import pandas as pd
 import streamlit as st
 from streamlit_autorefresh import st_autorefresh
+import plotly.express as px
+import plotly.graph_objects as go
+import yaml
 
 # -------------------------------------------------
 # Ensure project root is available for imports
@@ -13,6 +16,24 @@ if ROOT_DIR not in sys.path:
     sys.path.insert(0, ROOT_DIR)
 
 DB_PATH = os.path.join(ROOT_DIR, "epa.db")
+CONFIG_PATH = os.path.join(ROOT_DIR, "config.yaml")
+
+# -------------------------------------------------
+# Load Config
+# -------------------------------------------------
+def load_config():
+    try:
+        with open(CONFIG_PATH, 'r') as f:
+            return yaml.safe_load(f)
+    except Exception:
+        return {
+            "zscore_threshold": 3.0,
+            "rolling_window": 10,
+            "cusum_drift": 0.1,
+            "cusum_threshold": 1.5
+        }
+
+config = load_config()
 
 # -------------------------------------------------
 # Streamlit Page Config
@@ -204,6 +225,46 @@ Entropy: {row['entropy']:.4f}
 except Exception as e:
     st.error(f"Error loading alerts: {e}")
 
+# -------------------------------------------------
+# PROCESS ACTIVITY BREAKDOWN
+# -------------------------------------------------
+st.divider()
+st.subheader("🖥️ Process Activity Breakdown")
+
+try:
+    process_df = pd.read_sql(
+        """SELECT process_name, process_id, COUNT(*) as alert_count, MAX(timestamp) as last_seen
+           FROM alerts
+           WHERE process_name IS NOT NULL
+           GROUP BY process_name, process_id
+           ORDER BY alert_count DESC""",
+        conn
+    )
+    
+    if not process_df.empty:
+        col1, col2 = st.columns([2, 1])
+        
+        with col1:
+            # Bar chart for alerts per process
+            fig = px.bar(
+                process_df, 
+                x='process_name', 
+                y='alert_count',
+                color='process_name',
+                labels={'process_name': 'Process', 'alert_count': 'Alert Count'},
+                title="Alerts per Process"
+            )
+            st.plotly_chart(fig, use_container_width=True)
+            
+        with col2:
+            st.metric("Most Active Process", process_df.iloc[0]['process_name'], f"{process_df.iloc[0]['alert_count']} alerts")
+            st.dataframe(process_df[['process_name', 'alert_count', 'last_seen']], hide_index=True)
+    else:
+        st.info("No process activity data yet.")
+
+except Exception as e:
+    st.error(f"Error loading process activity: {e}")
+
 st.divider()
 
 # -------------------------------------------------
@@ -232,6 +293,48 @@ try:
         # Show chart
         st.line_chart(plot_df["entropy"], use_container_width=True)
         
+        # --- CUSUM and Z-score charts ---
+        st.subheader("📉 CUSUM and Z-Score Trends")
+        
+        # 1. CUSUM Logic
+        drift = config.get("cusum_drift", 0.1)
+        threshold = config.get("cusum_threshold", 1.5)
+        
+        cusum_scores = []
+        current_sum = 0
+        for val in plot_df["entropy"]:
+            current_sum = max(0, current_sum + val - drift)
+            cusum_scores.append(current_sum)
+        
+        plot_df["cusum"] = cusum_scores
+        
+        # 2. Z-Score Logic
+        window = config.get("rolling_window", 10)
+        z_threshold = config.get("zscore_threshold", 3.0)
+        
+        plot_df["rolling_mean"] = plot_df["entropy"].rolling(window=window).mean()
+        plot_df["rolling_std"] = plot_df["entropy"].rolling(window=window).std()
+        plot_df["zscore"] = (plot_df["entropy"] - plot_df["rolling_mean"]) / plot_df["rolling_std"]
+        plot_df["zscore"] = plot_df["zscore"].abs().fillna(0)
+        
+        c_col1, c_col2 = st.columns(2)
+        
+        with c_col1:
+            # CUSUM Plot with threshold line
+            fig_cusum = go.Figure()
+            fig_cusum.add_trace(go.Scatter(x=plot_df.index, y=plot_df["cusum"], name="CUSUM Score", line=dict(color='orange')))
+            fig_cusum.add_hline(y=threshold, line_dash="dash", line_color="red", annotation_text="Threshold")
+            fig_cusum.update_layout(title="CUSUM Trend", height=300, margin=dict(t=30, b=0, l=0, r=0))
+            st.plotly_chart(fig_cusum, use_container_width=True)
+            
+        with c_col2:
+            # Z-Score Plot with threshold line
+            fig_z = go.Figure()
+            fig_z.add_trace(go.Scatter(x=plot_df.index, y=plot_df["zscore"], name="Z-Score", line=dict(color='cyan')))
+            fig_z.add_hline(y=z_threshold, line_dash="dash", line_color="red", annotation_text="Z=3.0")
+            fig_z.update_layout(title="Z-Score Trend", height=300, margin=dict(t=30, b=0, l=0, r=0))
+            st.plotly_chart(fig_z, use_container_width=True)
+        
         # Show statistics for selected file
         col1, col2, col3 = st.columns(3)
         with col1:
@@ -239,12 +342,44 @@ try:
         with col2:
             st.metric("Max Entropy", f"{plot_df['entropy'].max():.2f}")
         with col3:
-            st.metric("Std Dev", f"{plot_df['entropy'].std():.2f}")
+            st.metric("Max CUSUM", f"{plot_df['cusum'].max():.2f}")
     else:
         st.info("⏳ Waiting for file activity...")
 
 except Exception as e:
     st.error(f"Error loading entropy trends: {e}")
+
+# -------------------------------------------------
+# ALERT FREQUENCY TIMELINE
+# -------------------------------------------------
+st.divider()
+st.subheader("📅 Alert Frequency History")
+
+try:
+    timeline_df = pd.read_sql(
+        "SELECT message, timestamp FROM alerts ORDER BY timestamp ASC",
+        conn
+    )
+    
+    if not timeline_df.empty:
+        timeline_df['timestamp'] = pd.to_datetime(timeline_df['timestamp'])
+        
+        # Histogram showing alerts clustered by time
+        fig_hist = px.histogram(
+            timeline_df, 
+            x="timestamp", 
+            color="message",
+            marginal="rug",
+            nbins=30,
+            title="Alerts Over Time",
+            labels={'timestamp': 'Time', 'count': 'Number of Alerts'}
+        )
+        st.plotly_chart(fig_hist, use_container_width=True)
+    else:
+        st.info("No alert history yet.")
+
+except Exception as e:
+    st.error(f"Error loading timeline: {e}")
 
 # -------------------------------------------------
 # Footer
