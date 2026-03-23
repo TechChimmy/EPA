@@ -1,5 +1,6 @@
 import sys
 import os
+from pathlib import Path
 import sqlite3
 import pandas as pd
 import streamlit as st
@@ -116,28 +117,34 @@ col1, col2, col3, col4 = st.columns(4)
 try:
     # Get alert count
     alert_count = pd.read_sql("SELECT COUNT(*) as count FROM alerts", conn).iloc[0]['count']
-    
-    # Get monitored files count
-    files_count = pd.read_sql("SELECT COUNT(DISTINCT file) as count FROM entropy", conn).iloc[0]['count']
-    
+
+    # Count actual files on disk in the test-folder (simulator target)
+    test_dir = os.path.join(ROOT_DIR, TARGET_DIR)
+    files_on_disk = sum(
+        1 for f in Path(test_dir).rglob("*") if f.is_file()
+    ) if os.path.isdir(test_dir) else 0
+
+    # Count files that have had entropy measured (scanned so far)
+    files_scanned = pd.read_sql("SELECT COUNT(DISTINCT file) as count FROM entropy", conn).iloc[0]['count']
+
     # Get entropy statistics
     entropy_stats = pd.read_sql(
         "SELECT MIN(entropy) as min, MAX(entropy) as max, AVG(entropy) as avg FROM entropy",
         conn
     ).iloc[0]
-    
+
     with col1:
         st.metric("🚨 Total Alerts", alert_count, delta=None if alert_count == 0 else f"+{alert_count}")
-    
+
     with col2:
-        st.metric("📁 Files Monitored", files_count)
-    
+        st.metric("📁 Files Monitored", files_on_disk, delta=f"{files_scanned} scanned")
+
     with col3:
         if pd.notna(entropy_stats['avg']):
             st.metric("📈 Avg Entropy", f"{entropy_stats['avg']:.2f}")
         else:
             st.metric("📈 Avg Entropy", "N/A")
-    
+
     with col4:
         if pd.notna(entropy_stats['max']):
             st.metric("⚡ Max Entropy", f"{entropy_stats['max']:.2f}")
@@ -268,81 +275,161 @@ except Exception as e:
 st.divider()
 
 # -------------------------------------------------
-# ENTROPY TRENDS SECTION
+# ENTROPY TRENDS SECTION - Attack Timeline View
 # -------------------------------------------------
-st.subheader("📈 File Entropy Trends")
+st.subheader("📈 Entropy Trends")
 
 try:
     entropy_df = pd.read_sql(
         "SELECT file, entropy, timestamp FROM entropy ORDER BY timestamp ASC",
         conn
     )
-    
+
     if not entropy_df.empty:
-        # File selector
-        selected_file = st.selectbox(
-            "Select file to visualize entropy",
-            entropy_df["file"].unique()
+        entropy_df['timestamp'] = pd.to_datetime(entropy_df['timestamp'])
+
+        view_mode = st.radio(
+            "View Mode",
+            ["Attack Timeline", "Per-File Detail"],
+            horizontal=True
         )
-        
-        # Filter and plot
-        plot_df = entropy_df[entropy_df["file"] == selected_file].copy()
-        plot_df['timestamp'] = pd.to_datetime(plot_df['timestamp'])
-        plot_df = plot_df.set_index("timestamp")
-        
-        # Show chart
-        st.line_chart(plot_df["entropy"], use_container_width=True)
-        
-        # --- CUSUM and Z-score charts ---
-        st.subheader("📉 CUSUM and Z-Score Trends")
-        
-        # 1. CUSUM Logic
-        drift = config.get("cusum_drift", 0.1)
-        threshold = config.get("cusum_threshold", 1.5)
-        
-        cusum_scores = []
-        current_sum = 0
-        for val in plot_df["entropy"]:
-            current_sum = max(0, current_sum + val - drift)
-            cusum_scores.append(current_sum)
-        
-        plot_df["cusum"] = cusum_scores
-        
-        # 2. Z-Score Logic
-        window = config.get("rolling_window", 10)
-        z_threshold = config.get("zscore_threshold", 3.0)
-        
-        plot_df["rolling_mean"] = plot_df["entropy"].rolling(window=window).mean()
-        plot_df["rolling_std"] = plot_df["entropy"].rolling(window=window).std()
-        plot_df["zscore"] = (plot_df["entropy"] - plot_df["rolling_mean"]) / plot_df["rolling_std"]
-        plot_df["zscore"] = plot_df["zscore"].abs().fillna(0)
-        
-        c_col1, c_col2 = st.columns(2)
-        
-        with c_col1:
-            # CUSUM Plot with threshold line
-            fig_cusum = go.Figure()
-            fig_cusum.add_trace(go.Scatter(x=plot_df.index, y=plot_df["cusum"], name="CUSUM Score", line=dict(color='orange')))
-            fig_cusum.add_hline(y=threshold, line_dash="dash", line_color="red", annotation_text="Threshold")
-            fig_cusum.update_layout(title="CUSUM Trend", height=300, margin=dict(t=30, b=0, l=0, r=0))
-            st.plotly_chart(fig_cusum, use_container_width=True)
-            
-        with c_col2:
-            # Z-Score Plot with threshold line
-            fig_z = go.Figure()
-            fig_z.add_trace(go.Scatter(x=plot_df.index, y=plot_df["zscore"], name="Z-Score", line=dict(color='cyan')))
-            fig_z.add_hline(y=z_threshold, line_dash="dash", line_color="red", annotation_text="Z=3.0")
-            fig_z.update_layout(title="Z-Score Trend", height=300, margin=dict(t=30, b=0, l=0, r=0))
-            st.plotly_chart(fig_z, use_container_width=True)
-        
-        # Show statistics for selected file
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            st.metric("Min Entropy", f"{plot_df['entropy'].min():.2f}")
-        with col2:
-            st.metric("Max Entropy", f"{plot_df['entropy'].max():.2f}")
-        with col3:
-            st.metric("Max CUSUM", f"{plot_df['cusum'].max():.2f}")
+
+        if view_mode == "Attack Timeline":
+            # --- ATTACK TIMELINE: all entropy measurements chronologically ---
+            # Color points by entropy level to show the encryption wave
+            entropy_df['status'] = entropy_df['entropy'].apply(
+                lambda e: 'High (>5.5)' if e > 5.5 else ('Medium (4-5.5)' if e > 4.0 else 'Normal (<4)')
+            )
+            color_map = {
+                'High (>5.5)': '#ff4444',
+                'Medium (4-5.5)': '#ffaa00',
+                'Normal (<4)': '#44bb44'
+            }
+
+            fig_timeline = px.scatter(
+                entropy_df,
+                x='timestamp',
+                y='entropy',
+                color='status',
+                color_discrete_map=color_map,
+                hover_data=['file'],
+                title="Attack Timeline - All File Entropy Over Time",
+                labels={'timestamp': 'Time', 'entropy': 'Shannon Entropy (bits/byte)'}
+            )
+            fig_timeline.add_hline(
+                y=5.5, line_dash="dash", line_color="red",
+                annotation_text="Alert Threshold (5.5)"
+            )
+            fig_timeline.update_layout(height=400)
+            st.plotly_chart(fig_timeline, use_container_width=True)
+
+            # --- FILE MODIFICATION RATE ---
+            rate_df = entropy_df.set_index('timestamp').resample('1s').count()[['file']].rename(
+                columns={'file': 'files_per_second'}
+            )
+            rate_df = rate_df[rate_df['files_per_second'] > 0]
+
+            if len(rate_df) > 1:
+                fig_rate = px.bar(
+                    rate_df.reset_index(),
+                    x='timestamp',
+                    y='files_per_second',
+                    title="File Modification Rate (files/second)",
+                    labels={'timestamp': 'Time', 'files_per_second': 'Files Modified'}
+                )
+                fig_rate.update_traces(marker_color='#ff6666')
+                fig_rate.update_layout(height=300)
+                st.plotly_chart(fig_rate, use_container_width=True)
+
+            # --- Entropy Distribution Histogram ---
+            fig_hist = px.histogram(
+                entropy_df,
+                x='entropy',
+                nbins=40,
+                title="Entropy Distribution Across All Files",
+                labels={'entropy': 'Shannon Entropy (bits/byte)', 'count': 'File Count'},
+                color_discrete_sequence=['#6699ff']
+            )
+            fig_hist.add_vline(
+                x=5.5, line_dash="dash", line_color="red",
+                annotation_text="Alert Threshold"
+            )
+            fig_hist.update_layout(height=300)
+            st.plotly_chart(fig_hist, use_container_width=True)
+
+            # Summary stats
+            col1, col2, col3, col4 = st.columns(4)
+            high_entropy_count = len(entropy_df[entropy_df['entropy'] > 5.5])
+            with col1:
+                st.metric("Total Measurements", len(entropy_df))
+            with col2:
+                st.metric("High Entropy Files", high_entropy_count)
+            with col3:
+                st.metric("Avg Entropy", f"{entropy_df['entropy'].mean():.2f}")
+            with col4:
+                if len(rate_df) > 0:
+                    st.metric("Peak Rate", f"{rate_df['files_per_second'].max()} files/s")
+                else:
+                    st.metric("Peak Rate", "N/A")
+
+        else:
+            # --- PER-FILE DETAIL VIEW (original, for files with multiple measurements) ---
+            selected_file = st.selectbox(
+                "Select file to visualize entropy",
+                entropy_df["file"].unique()
+            )
+
+            plot_df = entropy_df[entropy_df["file"] == selected_file].copy()
+            plot_df = plot_df.set_index("timestamp")
+
+            if len(plot_df) > 1:
+                st.line_chart(plot_df["entropy"], use_container_width=True)
+            else:
+                st.info(f"Single measurement for this file: entropy = {plot_df['entropy'].iloc[0]:.4f}")
+                st.scatter_chart(plot_df["entropy"], use_container_width=True)
+
+            # --- CUSUM and Z-score charts ---
+            if len(plot_df) > 1:
+                st.subheader("📉 CUSUM and Z-Score Trends")
+
+                drift = config.get("cusum_drift", 0.1)
+                threshold = config.get("cusum_threshold", 1.5)
+
+                cusum_scores = []
+                current_sum = 0
+                for val in plot_df["entropy"]:
+                    current_sum = max(0, current_sum + val - drift)
+                    cusum_scores.append(current_sum)
+                plot_df["cusum"] = cusum_scores
+
+                window = config.get("rolling_window", 10)
+                z_threshold = config.get("zscore_threshold", 3.0)
+                plot_df["rolling_mean"] = plot_df["entropy"].rolling(window=window).mean()
+                plot_df["rolling_std"] = plot_df["entropy"].rolling(window=window).std()
+                plot_df["zscore"] = (plot_df["entropy"] - plot_df["rolling_mean"]) / plot_df["rolling_std"]
+                plot_df["zscore"] = plot_df["zscore"].abs().fillna(0)
+
+                c_col1, c_col2 = st.columns(2)
+                with c_col1:
+                    fig_cusum = go.Figure()
+                    fig_cusum.add_trace(go.Scatter(x=plot_df.index, y=plot_df["cusum"], name="CUSUM Score", line=dict(color='orange')))
+                    fig_cusum.add_hline(y=threshold, line_dash="dash", line_color="red", annotation_text="Threshold")
+                    fig_cusum.update_layout(title="CUSUM Trend", height=300, margin=dict(t=30, b=0, l=0, r=0))
+                    st.plotly_chart(fig_cusum, use_container_width=True)
+                with c_col2:
+                    fig_z = go.Figure()
+                    fig_z.add_trace(go.Scatter(x=plot_df.index, y=plot_df["zscore"], name="Z-Score", line=dict(color='cyan')))
+                    fig_z.add_hline(y=z_threshold, line_dash="dash", line_color="red", annotation_text="Z=3.0")
+                    fig_z.update_layout(title="Z-Score Trend", height=300, margin=dict(t=30, b=0, l=0, r=0))
+                    st.plotly_chart(fig_z, use_container_width=True)
+
+            col1, col2, col3 = st.columns(3)
+            with col1:
+                st.metric("Min Entropy", f"{plot_df['entropy'].min():.2f}")
+            with col2:
+                st.metric("Max Entropy", f"{plot_df['entropy'].max():.2f}")
+            with col3:
+                st.metric("Measurements", len(plot_df))
     else:
         st.info("⏳ Waiting for file activity...")
 

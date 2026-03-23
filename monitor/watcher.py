@@ -1,6 +1,7 @@
 from watchdog.events import FileSystemEventHandler
 from monitor.sampler import sample_file
 from monitor.process import get_process_info
+from monitor.process_tracker import ProcessTracker
 from entropy.entropy import shannon_entropy
 from entropy.rolling import RollingEntropy
 from detection.zscore import is_anomaly
@@ -21,6 +22,35 @@ class Watcher(FileSystemEventHandler):
         self.store = {}  # Rolling entropy windows per file
         self.cusum_store = {}  # CUSUM detectors per file
         self.last_processed = {}  # timestamp of last processing per file
+        self.process_tracker = None  # Set via start_process_tracker()
+
+    def initial_scan(self, watch_path):
+        """Scan all existing files and log their baseline entropy."""
+        from pathlib import Path
+        scanned = 0
+        for filepath in Path(watch_path).rglob("*"):
+            if not filepath.is_file():
+                continue
+            if filepath.suffix in ('.db', '.db-journal', '.log'):
+                continue
+            data = sample_file(str(filepath), self.sample_size)
+            if not data:
+                continue
+            entropy = shannon_entropy(data)
+            log_entropy(str(filepath), entropy)
+            entropy_history.setdefault(str(filepath), []).append(entropy)
+            scanned += 1
+        print(f"[INFO] Initial scan complete: {scanned} files baselined")
+
+    def start_process_tracker(self, watch_path):
+        """Start background process tracker for reliable process attribution."""
+        self.process_tracker = ProcessTracker(watch_path)
+        self.process_tracker.start()
+
+    def stop_process_tracker(self):
+        """Stop the background process tracker."""
+        if self.process_tracker:
+            self.process_tracker.stop()
 
     def on_modified(self, event):
         self._process_event(event)
@@ -29,7 +59,7 @@ class Watcher(FileSystemEventHandler):
         self._process_event(event)
 
     def _process_event(self, event):
-        if event.is_directory or event.src_path.endswith(('.db', '.db-journal', '.log')):
+        if event.is_directory or event.src_path.endswith(('.db', '.db-journal', '.db-wal', '.db-shm', '.log', '.pyc')):
             return
 
         # Debounce: Skip if we processed this exact file in the last 1.0 seconds
@@ -121,19 +151,21 @@ class Watcher(FileSystemEventHandler):
 
     def _get_file_modifier_process(self, filepath):
         """
-        Attempt to identify the process modifying the file
-        
-        Note: This is a simplified implementation. On Linux, we could use:
-        - /proc/*/fd/* to find which process has the file open
-        - inotify with process tracking
-        - eBPF/ftrace for kernel-level monitoring
-        
-        For MVP, we'll try to find the process with the file open
+        Identify the process modifying the file using multiple strategies:
+
+        1. ProcessTracker cache (background polling catches short-lived file handles)
+        2. Live psutil open_files scan (fallback for slow operations)
+        3. Command-line matching (catches long-running processes like simulators)
         """
+        # Strategy 1: Use the background process tracker (most reliable)
+        if self.process_tracker:
+            result = self.process_tracker.lookup(filepath)
+            if result and result.get('name') != 'Unknown':
+                return result
+
+        # Strategy 2: Live scan (original approach, works for slow file operations)
         try:
             import psutil
-            
-            # Try to find process with this file open
             for proc in psutil.process_iter(['pid', 'name', 'open_files']):
                 try:
                     open_files = proc.info.get('open_files')
@@ -145,8 +177,7 @@ class Watcher(FileSystemEventHandler):
                     continue
         except Exception:
             pass
-        
-        # Fallback: return None (no process attribution)
+
         return None
 
 

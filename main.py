@@ -21,9 +21,14 @@ event_handler = Watcher(
     cusum_threshold=config.get("cusum_threshold", 1.5)
 )
 
+event_handler.initial_scan(path)
+
 observer = Observer()
 observer.schedule(event_handler, path, recursive=True)
 observer.start()
+
+# Start background process tracker for reliable process attribution
+event_handler.start_process_tracker(path)
 
 print(f"🔍 Monitoring: {path}")
 print(f"📊 Detection Methods:")
@@ -36,6 +41,7 @@ try:
     while True:
         time.sleep(1)
 except KeyboardInterrupt:
+    event_handler.stop_process_tracker()
     observer.stop()
 
 observer.join()
